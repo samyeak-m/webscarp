@@ -27,7 +27,7 @@ public class NepseScraper {
 
             createTablesIfNotExists();
 
-            scrapeAndStoreData(fetchDocument(historicalDataURL), "historical_data", true);
+//            scrapeAndStoreData(fetchDocument(historicalDataURL), "historical_data", true);
             scrapeAndStoreData(fetchDocument(currentDataURL), "live_data", false);
 
         } catch (IOException | SQLException e) {
