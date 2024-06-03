@@ -2,8 +2,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import java.util.Map;
-import java.util.HashMap;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,23 +17,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
-
-import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.time.LocalDate;
-import java.util.regex.Pattern;
-
-import static java.lang.Double.parseDouble;
-import static java.lang.Integer.parseInt;
-import static java.lang.Long.parseLong;
-
+import java.util.HashMap;
+import java.util.Map;
 
 public class LiveData {
 
@@ -63,7 +47,7 @@ public class LiveData {
                     if (now.isAfter(END_OF_DAY)) {
                         storeLastUpdateOfTheDay();
                         System.out.println("Last update of the day recorded at " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                        lastHash = ""; // Reset last hash for the next day
+                        lastHash = "";
                     }
                     System.out.println("Market is closed. Sleeping until next check.");
                     Thread.sleep(getSleepDuration());
@@ -82,7 +66,7 @@ public class LiveData {
                     String formattedNow = nowDateTime.format(formatter);
                     System.out.println("Data updated successfully at " + formattedNow);
                 } else {
-                    System.out.println("No changes detected");
+                    System.out.println("Data remains the same. Skipping database update.");
                 }
             } catch (Exception e) {
                 System.err.println("Error fetching or storing data: " + e.getMessage());
@@ -100,7 +84,7 @@ public class LiveData {
     private static long getSleepDuration() {
         LocalTime now = LocalTime.now();
         LocalTime nextStart = now.isBefore(START_OF_DAY) ? START_OF_DAY : START_OF_DAY.plusHours(24);
-        return java.time.Duration.between(now, nextStart).toMillis();
+        return now.isAfter(nextStart) ? java.time.Duration.between(nextStart, now).toMillis() : java.time.Duration.between(now, nextStart).toMillis();
     }
 
     private static String fetchData(String urlStr) throws IOException {
@@ -119,6 +103,7 @@ public class LiveData {
         return result.toString();
     }
 
+
     private static String generateHash(String content) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         byte[] hash = digest.digest(content.getBytes(StandardCharsets.UTF_8));
@@ -131,25 +116,28 @@ public class LiveData {
 
             String liveTableSQL = "CREATE TABLE IF NOT EXISTS live_data (" +
                     "id INT AUTO_INCREMENT PRIMARY KEY," +
+                    "date DATE," +
                     "symbol VARCHAR(255)," +
                     "conf DECIMAL(10,2)," +
                     "open DECIMAL(10,2)," +
                     "high DECIMAL(10,2)," +
                     "low DECIMAL(10,2)," +
                     "close DECIMAL(10,2)," +
-                    "vwap DECIMAL(10,2)," +
-                    "vol BIGINT," +
+                    "vwap VARCHAR(20)," +
+                    "vol DECIMAL(20,2)," +
                     "prev_close DECIMAL(10,2)," +
-                    "turnover DECIMAL(10,2)," +
+                    "turnover DECIMAL(20,2)," +
                     "trans INT," +
-                    "diff DECIMAL(10,2)," +
+                    "diff VARCHAR(20)," +
                     "`range` DECIMAL(10,2)," +
-                    "diff_perc DECIMAL(5,2)," +
-                    "range_vwap DECIMAL(10,2)," +
+                    "diff_perc VARCHAR(20)," +
+                    "range_perc DECIMAL(10,2)," +
+                    "vwap_perc VARCHAR(20)," +
                     "days_120 DECIMAL(10,2)," +
                     "days_180 DECIMAL(10,2)," +
                     "weeks_52_high DECIMAL(10,2)," +
-                    "weeks_52_low DECIMAL(10,2)" +
+                    "weeks_52_low DECIMAL(10,2)," +
+                    "UNIQUE KEY unique_date_symbol (date, symbol)" +
                     ")";
             stmt.executeUpdate(liveTableSQL);
         }
@@ -160,68 +148,128 @@ public class LiveData {
             Document doc = Jsoup.parse(content);
             for (Element row : doc.select("table.table tr")) {
                 Elements cells = row.select("td");
-                if (cells.size() >= 20) {
-                    try {
-                        LocalDate date = LocalDate.now();
-                        String symbol = cells.get(1).text();
-                        String confText = cells.get(2).text().replace(",", "");
-                        double conf = confText.equals("-") ? 0.0 : Double.parseDouble(confText);
-                        double open = Double.parseDouble(cells.get(3).text().replace(",", ""));
-                        double high = Double.parseDouble(cells.get(4).text().replace(",", ""));
-                        double low = Double.parseDouble(cells.get(5).text().replace(",", ""));
-                        double close = Double.parseDouble(cells.get(6).text().replace(",", ""));
-                        double vwap = Double.parseDouble(cells.get(7).text().replace(",", ""));
-                        long vol = Long.parseLong(cells.get(8).text().replace(",", ""));
-                        double prevClose = Double.parseDouble(cells.get(9).text().replace(",", ""));
-                        double turnover = Double.parseDouble(cells.get(10).text().replace(",", ""));
-                        int trans = Integer.parseInt(cells.get(11).text().replace(",", ""));
-                        double diff = Double.parseDouble(cells.get(12).text().replace(",", ""));
-                        double range = Double.parseDouble(cells.get(13).text().replace(",", ""));
-                        double diffPerc = Double.parseDouble(cells.get(14).text().replace(",", ""));
-                        double rangeVwap = Double.parseDouble(cells.get(15).text().replace(",", ""));
-                        double days120 = Double.parseDouble(cells.get(16).text().replace(",", ""));
-                        double days180 = Double.parseDouble(cells.get(17).text().replace(",", ""));
-                        double weeks52High = Double.parseDouble(cells.get(18).text().replace(",", ""));
-                        double weeks52Low = Double.parseDouble(cells.get(19).text().replace(",", ""));
 
-                        String sql = "INSERT INTO live_data (date, symbol, conf, open, high, low, close, vwap, vol, prev_close, turnover, trans, diff, `range`, diff_perc, range_vwap, days_120, days_180, weeks_52_high, weeks_52_low) " +
-                                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
-                                "ON DUPLICATE KEY UPDATE open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), vol = VALUES(vol), prev_close = VALUES(prev_close), turnover = VALUES(turnover), trans = VALUES(trans), diff = VALUES(diff), `range` = VALUES(`range`), diff_perc = VALUES(diff_perc), range_vwap = VALUES(range_vwap), days_120 = VALUES(days_120), days_180 = VALUES(days_180), weeks_52_high = VALUES(weeks_52_high), weeks_52_low = VALUES(weeks_52_low)";
-                        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                            pstmt.setObject(1, date);
-                            pstmt.setString(2, symbol);
-                            pstmt.setDouble(3, conf);
-                            pstmt.setDouble(4, open);
-                            pstmt.setDouble(5, high);
-                            pstmt.setDouble(6, low);
-                            pstmt.setDouble(7, close);
-                            pstmt.setDouble(8, vwap);
-                            pstmt.setLong(9, vol);
-                            pstmt.setDouble(10, prevClose);
-                            pstmt.setDouble(11, turnover);
-                            pstmt.setInt(12, trans);
-                            pstmt.setDouble(13, diff);
-                            pstmt.setDouble(14, range);
-                            pstmt.setDouble(15, diffPerc);
-                            pstmt.setDouble(16, rangeVwap);
-                            pstmt.setDouble(17, days120);
-                            pstmt.setDouble(18, days180);
-                            pstmt.setDouble(19, weeks52High);
-                            pstmt.setDouble(20, weeks52Low);
-                            pstmt.executeUpdate();
-                        } catch (NumberFormatException e) {
-                            System.err.println("Skipping row due to number format error: " + e.getMessage());
-                        }
-                    } catch (NumberFormatException e) {
-                        System.err.println("Skipping row due to number format error: " + e.getMessage());
-                    }
-                } else {
+                if (cells.size() < 2) {
                     System.out.println("Skipping row with insufficient columns: " + row.text());
+                    continue;
+                }
+
+                String symbol = cells.get(1).text().trim();
+                if (symbol.isEmpty()) {
+                    System.out.println("Skipping row with empty symbol: " + row.text());
+                    continue;
+                }
+
+                while (cells.size() < 21) {
+                    cells.add(new Element("td").text("0"));
+                }
+
+                try {
+                    LocalDate date = LocalDate.now();
+                    double conf = parseDouble(cells.get(2).text());
+                    double open = parseDouble(cells.get(3).text());
+                    double high = parseDouble(cells.get(4).text());
+                    double low = parseDouble(cells.get(5).text());
+                    double close = parseDouble(cells.get(6).text());
+                    String vwap = cells.get(7).text();
+                    double vol = parseDouble(cells.get(8).text());
+                    double prevClose = parseDouble(cells.get(9).text());
+                    double turnover = parseDouble(cells.get(10).text());
+                    int trans = parseInt(cells.get(11).text());
+                    String diff = cells.get(12).text();
+                    double range = parseDouble(cells.get(13).text());
+                    String diffPerc = cells.get(14).text();
+                    double rangePerc = parseDouble(cells.get(15).text());
+                    String vwapPerc = cells.get(16).text();
+                    double days120 = parseDouble(cells.get(17).text());
+                    double days180 = parseDouble(cells.get(18).text());
+                    double weeks52High = parseDouble(cells.get(19).text());
+                    double weeks52Low = parseDouble(cells.get(20).text());
+
+                    String checkSql = "SELECT COUNT(*) FROM live_data WHERE symbol = ?";
+                    try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+                        checkStmt.setString(1, symbol);
+                        try (ResultSet rs = checkStmt.executeQuery()) {
+                            if (rs.next() && rs.getInt(1) > 0) {
+                                String updateSql = "UPDATE live_data SET date = ?, conf = ?, open = ?, high = ?, low = ?, close = ?, vwap = ?, vol = ?, prev_close = ?, turnover = ?, trans = ?, diff = ?, `range` = ?, diff_perc = ?, range_perc = ?, vwap_perc = ?, days_120 = ?, days_180 = ?, weeks_52_high = ?, weeks_52_low = ? WHERE symbol = ?";
+                                try (PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
+                                    pstmt.setObject(1, date);
+                                    pstmt.setDouble(2, conf);
+                                    pstmt.setDouble(3, open);
+                                    pstmt.setDouble(4, high);
+                                    pstmt.setDouble(5, low);
+                                    pstmt.setDouble(6, close);
+                                    pstmt.setString(7, vwap);
+                                    pstmt.setDouble(8, vol);
+                                    pstmt.setDouble(9, prevClose);
+                                    pstmt.setDouble(10, turnover);
+                                    pstmt.setInt(11, trans);
+                                    pstmt.setString(12, diff);
+                                    pstmt.setDouble(13, range);
+                                    pstmt.setString(14, diffPerc);
+                                    pstmt.setDouble(15, rangePerc);
+                                    pstmt.setString(16, vwapPerc);
+                                    pstmt.setDouble(17, days120);
+                                    pstmt.setDouble(18, days180);
+                                    pstmt.setDouble(19, weeks52High);
+                                    pstmt.setDouble(20, weeks52Low);
+                                    pstmt.setString(21, symbol);
+                                    pstmt.executeUpdate();
+                                }
+                            } else {
+                                String insertSql = "INSERT INTO live_data (date, symbol, conf, open, high, low, close, vwap, vol, prev_close, turnover, trans, diff, `range`, diff_perc, range_perc, vwap_perc, days_120, days_180, weeks_52_high, weeks_52_low) " +
+                                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
+                                    pstmt.setObject(1, date);
+                                    pstmt.setString(2, symbol);
+                                    pstmt.setDouble(3, conf);
+                                    pstmt.setDouble(4, open);
+                                    pstmt.setDouble(5, high);
+                                    pstmt.setDouble(6, low);
+                                    pstmt.setDouble(7, close);
+                                    pstmt.setString(8, vwap);
+                                    pstmt.setDouble(9, vol);
+                                    pstmt.setDouble(10, prevClose);
+                                    pstmt.setDouble(11, turnover);
+                                    pstmt.setInt(12, trans);
+                                    pstmt.setString(13, diff);
+                                    pstmt.setDouble(14, range);
+                                    pstmt.setString(15, diffPerc);
+                                    pstmt.setDouble(16, rangePerc);
+                                    pstmt.setString(17, vwapPerc);
+                                    pstmt.setDouble(18, days120);
+                                    pstmt.setDouble(19, days180);
+                                    pstmt.setDouble(20, weeks52High);
+                                    pstmt.setDouble(21, weeks52Low);
+                                    pstmt.executeUpdate();
+                                }
+                            }
+                        }
+                    }
+                } catch (NumberFormatException e) {
+                    System.err.println("Skipping row due to number format error: " + e.getMessage() + " - Row data: " + row.text());
+                } catch (SQLException e) {
+                    System.err.println("SQL error while inserting row: " + e.getMessage() + " - Row data: " + row.text());
                 }
             }
         }
     }
 
+    private static double parseDouble(String text) {
+        try {
+            return Double.parseDouble(text.replace(",", "").replace("-", "0"));
+        } catch (NumberFormatException e) {
+            return 0.0;
+        }
+    }
+
+    private static int parseInt(String text) {
+        try {
+            return Integer.parseInt(text.replace(",", "").replace("-", "0"));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
 
     private static void storeLastUpdateOfTheDay() throws SQLException {
         LocalDate date = LocalDate.now();
@@ -231,35 +279,51 @@ public class LiveData {
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
                     String symbol = rs.getString("symbol");
-                    String tableName = "daily_data_" + symbol.replace("-", "_"); // Create a valid table name
+                    String tableName = "daily_data_" + symbol.replaceAll("\\W", "_");
 
-                    // Create table if not exists
-                    String createTableSql = "CREATE TABLE IF NOT EXISTS " + tableName + " (" +
-                            "date DATE," +
-                            "open DOUBLE," +
-                            "high DOUBLE," +
-                            "low DOUBLE," +
-                            "close DOUBLE," +
-                            "volume BIGINT," +
-                            "PRIMARY KEY (date)" +
-                            ")";
-                    stmt.executeUpdate(createTableSql);
+                    if (!tableExists(conn, tableName)) {
+                        String createTableSql = "CREATE TABLE " + tableName + " (" +
+                                "date DATE," +
+                                "open DOUBLE," +
+                                "high DOUBLE," +
+                                "low DOUBLE," +
+                                "close DOUBLE," +
+                                "turnover Double," +
+                                "volume Double," +
+                                "PRIMARY KEY (date)" +
+                                ")";
+                        System.out.println("Creating table with SQL: " + createTableSql); //debugging: check table is create or not
+                        stmt.executeUpdate(createTableSql);
+                    }
 
-                    // Insert or update data
-                    String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume) " +
-                            "SELECT ?, open, high, low, close, volume FROM live_data " +
+                    String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume,turnover) " +
+                            "SELECT ?, open, high, low, close, turnover,CASE WHEN vol >= 0 THEN vol ELSE 0 END AS volume " +
+                            "FROM live_data " +
                             "WHERE symbol = ? AND date = (SELECT MAX(date) FROM live_data WHERE symbol = ?) " +
-                            "ON DUPLICATE KEY UPDATE open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume)";
+                            "ON DUPLICATE KEY UPDATE open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), turnover = VALUES(turnover),volume = CASE WHEN VALUES(volume) >= 0 THEN VALUES(volume) ELSE 0 END";
+
+//                    System.out.println("Inserting data with SQL: " + insertSql); //debugging: check table is update or not
+
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                         pstmt.setObject(1, date.atTime(END_OF_DAY));
                         pstmt.setString(2, symbol);
                         pstmt.setString(3, symbol);
-                        pstmt.executeUpdate();
+                        int rowsAffected = pstmt.executeUpdate();
+//                        System.out.println("Rows affected: " + rowsAffected); //debugging: number of row affected by query
                     }
                 }
             }
         }
     }
+
+    private static boolean tableExists(Connection conn, String tableName) throws SQLException {
+        DatabaseMetaData meta = conn.getMetaData();
+        try (ResultSet rs = meta.getTables(null, null, tableName, new String[]{"TABLE"})) {
+            return rs.next();
+        }
+    }
+
+
 
     private static Map<String, Object> getLastData(String symbol) throws SQLException {
         Map<String, Object> data = new HashMap<>();

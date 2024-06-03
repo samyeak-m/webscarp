@@ -84,11 +84,11 @@ public class NepseScraper {
                         String dateStr = cells.get(0).text();
                         LocalDate date = LocalDate.parse(dateStr, DateTimeFormatter.ofPattern("yyyy-MM-dd"));
                         String symbol = cells.get(1).text();
-                        double open = Double.parseDouble(cells.get(2).text().replace(",", ""));
-                        double high = Double.parseDouble(cells.get(3).text().replace(",", ""));
-                        double low = Double.parseDouble(cells.get(4).text().replace(",", ""));
-                        double close = Double.parseDouble(cells.get(5).text().replace(",", ""));
-                        long volume = Long.parseLong(cells.get(6).text().replace(",", ""));
+                        double open = Double.parseDouble(cells.get(3).text().replace(",", ""));
+                        double high = Double.parseDouble(cells.get(4).text().replace(",", ""));
+                        double low = Double.parseDouble(cells.get(5).text().replace(",", ""));
+                        double close = Double.parseDouble(cells.get(6).text().replace(",", ""));
+                        long volume = Long.parseLong(cells.get(8).text().replace(",", ""));
 
                         insertOrUpdateData(conn, "historical_data", date, symbol, open, high, low, close, volume);
                     } else {
