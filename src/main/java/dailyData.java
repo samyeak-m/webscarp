@@ -271,15 +271,27 @@ public class dailyData {
         }
     }
 
+    private static boolean tableExists(Connection conn, String tableName) {
+        System.out.println("Checking if table exists: " + tableName);
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeQuery("SELECT 1 FROM " + tableName + " LIMIT 1");
+            System.out.println("Table " + tableName + " exists.");
+            return true;
+        } catch (SQLException e) {
+            System.out.println("Table " + tableName + " does not exist.");
+            return false;
+        }
+    }
+
     private static void storeLastUpdateOfTheDay() throws SQLException {
-        LocalDate date = LocalDate.now();
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            String selectSql = "SELECT DISTINCT symbol FROM daily_data";
+            String selectSql = "SELECT DISTINCT symbol, date FROM daily_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
                     String symbol = rs.getString("symbol");
-                    String tableName = "daily_data_" + symbol.replaceAll("\\W", "_");
+                    LocalDate date = rs.getDate("date").toLocalDate();
+                    String tableName = "daily_data_" + symbol.replaceAll("\\W", "_").toLowerCase();  // Normalize to lowercase
 
                     if (!tableExists(conn, tableName)) {
                         String createTableSql = "CREATE TABLE " + tableName + " (" +
@@ -288,35 +300,26 @@ public class dailyData {
                                 "high DOUBLE," +
                                 "low DOUBLE," +
                                 "close DOUBLE," +
-                                "turnover DOUBLE," +
                                 "volume DOUBLE," +
+                                "turnover DOUBLE," +
                                 "PRIMARY KEY (date)" +
                                 ")";
-                        System.out.println("Creating table with SQL: " + createTableSql); //debugging: check table is create or not
-                        stmt.executeUpdate(createTableSql);
+                        try (Statement createStmt = conn.createStatement()) {
+                            createStmt.executeUpdate(createTableSql);
+                        }
                     }
 
                     String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume, turnover) " +
-                            "SELECT ?, open, high, low, close, turnover, CASE WHEN vol >= 0 THEN vol ELSE 0 END AS volume " +
-                            "FROM daily_data " +
-                            "WHERE symbol = ? AND date = (SELECT MAX(date) FROM daily_data WHERE symbol = ?) " +
-                            "ON DUPLICATE KEY UPDATE open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), turnover = VALUES(turnover), volume = CASE WHEN VALUES(volume) >= 0 THEN VALUES(volume) ELSE 0 END";
-
+                            "SELECT date, open, high, low, close, vol, turnover FROM daily_data WHERE symbol = ? AND date = ? " +
+                            "ON DUPLICATE KEY UPDATE " +
+                            "open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume), turnover = VALUES(turnover)";
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                        pstmt.setObject(1, date.atTime(END_OF_DAY));
-                        pstmt.setString(2, symbol);
-                        pstmt.setString(3, symbol);
-                        int rowsAffected = pstmt.executeUpdate();
+                        pstmt.setString(1, symbol);
+                        pstmt.setObject(2, date);
+                        pstmt.executeUpdate();
                     }
                 }
             }
-        }
-    }
-
-    private static boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getTables(null, null, tableName, new String[]{"TABLE"})) {
-            return rs.next();
         }
     }
 

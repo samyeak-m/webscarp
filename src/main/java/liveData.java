@@ -22,12 +22,12 @@ import java.util.Map;
 
 public class liveData {
 
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/nepse_livedata";
+    private static final String DB_URL = "jdbc:mysql://localhost:3306/nepse_data";
     private static final String DB_USER = "root";
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
     private static final LocalTime START_OF_DAY = LocalTime.of(11, 00);
-    private static final LocalTime END_OF_DAY = LocalTime.of(15, 05);
+    private static final LocalTime END_OF_DAY = LocalTime.of(15, 01);
 
     private static String lastHash = "";
 

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class ExcelToDatabase {
-    private static final String JDBC_URL = "jdbc:mysql://localhost:3306/nepse_demodata";
+    private static final String JDBC_URL = "jdbc:mysql://localhost:3306/nepse_data";
     private static final String USERNAME = "root"; // Replace with your MySQL username
     private static final String PASSWORD = ""; // Replace with your MySQL password
     private static final String FOLDER_PATH = "D:/downloads/nepsedata/"; // Replace with your actual folder path
@@ -65,9 +65,9 @@ public class ExcelToDatabase {
         double low;
         double close;
         double turnover;  // Changed to double
-        double volume;
+        double vol;
 
-        public StockData(LocalDate date, String symbol, double open, double high, double low, double close, double turnover, double volume) {
+        public StockData(LocalDate date, String symbol, double open, double high, double low, double close, double turnover, double vol) {
             this.date = date;
             this.symbol = symbol;
             this.open = open;
@@ -75,7 +75,7 @@ public class ExcelToDatabase {
             this.low = low;
             this.close = close;
             this.turnover = turnover;
-            this.volume = volume;
+            this.vol = vol;
         }
     }
 
@@ -90,7 +90,7 @@ public class ExcelToDatabase {
                 "low DECIMAL(10, 2)," +
                 "close DECIMAL(10, 2)," +
                 "turnover DECIMAL(20, 2)," + // Changed to DECIMAL for turnover
-                "volume DECIMAL(20, 2)" +
+                "vol DECIMAL(20, 2)" +
                 ")";
         try (Statement statement = connection.createStatement()) {
             statement.execute(createTableSQL);
@@ -107,8 +107,8 @@ public class ExcelToDatabase {
         double low = Double.parseDouble(getCellValue(row.getCell(7)));
         double close = Double.parseDouble(getCellValue(row.getCell(8)));
         double turnover = Double.parseDouble(getCellValue(row.getCell(9))); // Parse turnover as double
-        double volume = Double.parseDouble(getCellValue(row.getCell(10)));
-        return new StockData(date, symbol, open, high, low, close, turnover, volume);
+        double vol = Double.parseDouble(getCellValue(row.getCell(10)));
+        return new StockData(date, symbol, open, high, low, close, turnover, vol);
     }
 
     // Method to get cell value as string
@@ -136,7 +136,7 @@ public class ExcelToDatabase {
 
     // Method to insert stock data into the database in batches
     private static void insertStockData(Connection connection, List<StockData> stockDataList) throws SQLException {
-        String sql = "INSERT INTO stock_data (date, symbol, open, high, low, close, turnover, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO stock_data (date, symbol, open, high, low, close, turnover, vol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (StockData stockData : stockDataList) {
@@ -147,7 +147,7 @@ public class ExcelToDatabase {
                 statement.setDouble(5, stockData.low);
                 statement.setDouble(6, stockData.close);
                 statement.setDouble(7, stockData.turnover); // Set turnover as double
-                statement.setDouble(8, stockData.volume);
+                statement.setDouble(8, stockData.vol);
                 statement.addBatch();
             }
 
