@@ -272,13 +272,10 @@ public class dailyData {
     }
 
     private static boolean tableExists(Connection conn, String tableName) {
-        System.out.println("Checking if table exists: " + tableName);
         try (Statement stmt = conn.createStatement()) {
             stmt.executeQuery("SELECT 1 FROM " + tableName + " LIMIT 1");
-            System.out.println("Table " + tableName + " exists.");
             return true;
         } catch (SQLException e) {
-            System.out.println("Table " + tableName + " does not exist.");
             return false;
         }
     }
