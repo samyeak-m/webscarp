@@ -26,8 +26,8 @@ public class dailyData {
     private static final String DB_USER = "root";
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
-    private static final LocalTime START_OF_DAY = LocalTime.of(10, 00);
-    private static final LocalTime END_OF_DAY = LocalTime.of(11, 01);
+    private static final LocalTime START_OF_DAY = LocalTime.of(11, 00);
+    private static final LocalTime END_OF_DAY = LocalTime.of(15, 01);
 
     private static String lastHash = "";
 
@@ -304,7 +304,7 @@ public class dailyData {
                                 ")";
                         try (Statement createStmt = conn.createStatement()) {
                             createStmt.executeUpdate(createTableSql);
-                            System.out.println("Table created: " + tableName);
+                            System.out.println("\u001B[32m"+"Table created: " + tableName+"\u001B[0m");
                         }
                     }
 

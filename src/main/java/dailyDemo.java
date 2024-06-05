@@ -27,7 +27,7 @@ public class dailyDemo {
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
     private static final LocalTime START_OF_DAY = LocalTime.of(11, 00);
-    private static final LocalTime END_OF_DAY = LocalTime.of(15, 05);
+    private static final LocalTime END_OF_DAY = LocalTime.of(20, 25);
 
     private static String lastHash = "";
 
@@ -285,7 +285,7 @@ public class dailyDemo {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS))
         {
             int count=0;
-            String selectSql = "SELECT DISTINCT symbol, date FROM stock_data";
+            String selectSql = "SELECT DISTINCT symbol, date FROM daily_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
@@ -306,13 +306,13 @@ public class dailyDemo {
                                 ")";
                         try (Statement createStmt = conn.createStatement()) {
                             createStmt.executeUpdate(createTableSql);
-                            System.out.println("Table created : "+tableName);
+                            System.out.println("\u001B[32m"+"Table created: " + tableName+"\u001B[37m");
 
                         }
                     }
 
                     String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume, turnover) " +
-                            "SELECT date, open, high, low, close, vol, turnover FROM stock_data WHERE symbol = ? AND date = ? " +
+                            "SELECT date, open, high, low, close, vol, turnover FROM daily_data WHERE symbol = ? AND date = ? " +
                             "ON DUPLICATE KEY UPDATE " +
                             "open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume), turnover = VALUES(turnover)";
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
