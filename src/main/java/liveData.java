@@ -30,25 +30,28 @@ public class liveData {
     private static final LocalTime END_OF_DAY = LocalTime.of(15, 01);
 
     private static String lastHash = "";
+    private static LocalDate lastCheckedDate = LocalDate.now();
 
     public static void main(String[] args) {
         try {
             createTableIfNotExists();
-            System.out.println("Table checked/created successfully.");
+            createTransactionTableIfNotExists();
+            System.out.println("Tables checked/created successfully.");
         } catch (SQLException e) {
-            System.err.println("Error creating table: " + e.getMessage());
+            System.err.println("Error creating tables: " + e.getMessage());
             return;
         }
 
         while (true) {
             try {
                 LocalTime now = LocalTime.now();
+                LocalDate today = LocalDate.now();
+                if (!today.equals(lastCheckedDate)) {
+                    clearTransactionTable();
+                    lastCheckedDate = today;
+                }
+
                 if (now.isBefore(START_OF_DAY) || now.isAfter(END_OF_DAY)) {
-                    if (now.isAfter(END_OF_DAY)) {
-                        storeLastUpdateOfTheDay();
-                        System.out.println("Last update of the day recorded at " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-                        lastHash = "";
-                    }
                     System.out.println("Market is closed. Sleeping until next check.");
                     Thread.sleep(getSleepDuration());
                     continue;
@@ -132,6 +135,38 @@ public class liveData {
         }
     }
 
+    private static void createTransactionTableIfNotExists() throws SQLException {
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             Statement stmt = conn.createStatement()) {
+
+            String transactionTableSQL = "CREATE TABLE IF NOT EXISTS transaction_data (" +
+                    "id INT AUTO_INCREMENT PRIMARY KEY," +
+                    "timestamp TIMESTAMP," +
+                    "symbol VARCHAR(255)," +
+                    "ltp DECIMAL(10,2)," +
+                    "pointChange VARCHAR(20)," +
+                    "perChange VARCHAR(20)," +
+                    "open DECIMAL(10,2)," +
+                    "high DECIMAL(10,2)," +
+                    "low DECIMAL(10,2)," +
+                    "vol DECIMAL(20,2)," +
+                    "prev_close DECIMAL(10,2)" +
+                    ")";
+            stmt.executeUpdate(transactionTableSQL);
+        }
+    }
+
+    private static void clearTransactionTable() {
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+             Statement stmt = conn.createStatement()) {
+            String deleteSql = "DELETE FROM transaction_data";
+            stmt.executeUpdate(deleteSql);
+            System.out.println("Transaction table cleared for new day.");
+        } catch (SQLException e) {
+            System.err.println("Error clearing transaction table: " + e.getMessage());
+        }
+    }
+
     private static void scrapeAndStoreData(String content) throws SQLException {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
             Document doc = Jsoup.parse(content);
@@ -164,6 +199,7 @@ public class liveData {
                     double vol = parseDouble(cells.get(8).text());
                     double prevClose = parseDouble(cells.get(9).text());
 
+                    // Insert or update in live_data table
                     String checkSql = "SELECT COUNT(*) FROM live_data WHERE symbol = ?";
                     try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
                         checkStmt.setString(1, symbol);
@@ -202,6 +238,24 @@ public class liveData {
                             }
                         }
                     }
+
+                    // Insert into transaction_data table
+                    String transactionSql = "INSERT INTO transaction_data (timestamp, symbol, ltp, pointChange, perChange, open, high, low, vol, prev_close) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    try (PreparedStatement pstmt = conn.prepareStatement(transactionSql)) {
+                        pstmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
+                        pstmt.setString(2, symbol);
+                        pstmt.setDouble(3, ltp);
+                        pstmt.setString(4, pointChange);
+                        pstmt.setString(5, perChange);
+                        pstmt.setDouble(6, open);
+                        pstmt.setDouble(7, high);
+                        pstmt.setDouble(8, low);
+                        pstmt.setDouble(9, vol);
+                        pstmt.setDouble(10, prevClose);
+                        pstmt.executeUpdate();
+                    }
+
                 } catch (NumberFormatException e) {
                     System.err.println("Skipping row due to number format error: " + e.getMessage() + " - Row data: " + row.text());
                 } catch (SQLException e) {
@@ -227,78 +281,4 @@ public class liveData {
         }
     }
 
-    private static void storeLastUpdateOfTheDay() throws SQLException {
-        LocalDate date = LocalDate.now();
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            String selectSql = "SELECT DISTINCT symbol FROM live_data";
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(selectSql)) {
-                while (rs.next()) {
-                    String symbol = rs.getString("symbol");
-                    String tableName = "daily_data_" + symbol.replaceAll("\\W", "_");
-
-                    if (!tableExists(conn, tableName)) {
-                        String createTableSql = "CREATE TABLE " + tableName + " (" +
-                                "date DATE," +
-                                "open DOUBLE," +
-                                "high DOUBLE," +
-                                "low DOUBLE," +
-                                "close DOUBLE," +
-                                "turnover Double," +
-                                "volume Double," +
-                                "PRIMARY KEY (date)" +
-                                ")";
-                        System.out.println("Creating table with SQL: " + createTableSql); //debugging: check table is create or not
-                        stmt.executeUpdate(createTableSql);
-                    }
-
-                    String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume,turnover) " +
-                            "SELECT ?, open, high, low, close, turnover,CASE WHEN vol >= 0 THEN vol ELSE 0 END AS volume " +
-                            "FROM live_data " +
-                            "WHERE symbol = ? AND date = (SELECT MAX(date) FROM live_data WHERE symbol = ?) " +
-                            "ON DUPLICATE KEY UPDATE open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), turnover = VALUES(turnover),volume = CASE WHEN VALUES(volume) >= 0 THEN VALUES(volume) ELSE 0 END";
-
-//                    System.out.println("Inserting data with SQL: " + insertSql); //debugging: check table is update or not
-
-                    try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                        pstmt.setObject(1, date.atTime(END_OF_DAY));
-                        pstmt.setString(2, symbol);
-                        pstmt.setString(3, symbol);
-                        int rowsAffected = pstmt.executeUpdate();
-//                        System.out.println("Rows affected: " + rowsAffected); //debugging: number of row affected by query
-                    }
-                }
-            }
-        }
-    }
-
-    private static boolean tableExists(Connection conn, String tableName) throws SQLException {
-        DatabaseMetaData meta = conn.getMetaData();
-        try (ResultSet rs = meta.getTables(null, null, tableName, new String[]{"TABLE"})) {
-            return rs.next();
-        }
-    }
-
-
-
-    private static Map<String, Object> getLastData(String symbol) throws SQLException {
-        Map<String, Object> data = new HashMap<>();
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            String tableName = "daily_data_" + symbol.replace("-", "_");
-            String sql = "SELECT * FROM " + tableName + " WHERE date = (SELECT MAX(date) FROM " + tableName + ")";
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(sql)) {
-                if (rs.next()) {
-                    ResultSetMetaData rsmd = rs.getMetaData();
-                    int columnCount = rsmd.getColumnCount();
-                    for (int i = 1; i <= columnCount; i++) {
-                        String name = rsmd.getColumnName(i);
-                        Object value = rs.getObject(i);
-                        data.put(name, value);
-                    }
-                }
-            }
-        }
-        return data;
-    }
 }

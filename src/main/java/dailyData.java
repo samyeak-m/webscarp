@@ -26,8 +26,8 @@ public class dailyData {
     private static final String DB_USER = "root";
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
-    private static final LocalTime START_OF_DAY = LocalTime.of(10, 45);
-    private static final LocalTime END_OF_DAY = LocalTime.of(15, 15);
+    private static final LocalTime START_OF_DAY = LocalTime.of(10, 00);
+    private static final LocalTime END_OF_DAY = LocalTime.of(11, 01);
 
     private static String lastHash = "";
 
@@ -282,7 +282,8 @@ public class dailyData {
 
     private static void storeLastUpdateOfTheDay() throws SQLException {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            String selectSql = "SELECT DISTINCT symbol, date FROM daily_data";
+            Map<String, Integer> updateCounts = new HashMap<>();  // Initialize map to store update counts for each table
+            String selectSql = "SELECT DISTINCT symbol, date FROM stock_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
@@ -303,22 +304,33 @@ public class dailyData {
                                 ")";
                         try (Statement createStmt = conn.createStatement()) {
                             createStmt.executeUpdate(createTableSql);
+                            System.out.println("Table created: " + tableName);
                         }
                     }
 
                     String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume, turnover) " +
-                            "SELECT date, open, high, low, close, vol, turnover FROM daily_data WHERE symbol = ? AND date = ? " +
+                            "SELECT date, open, high, low, close, vol, turnover FROM stock_data WHERE symbol = ? AND date = ? " +
                             "ON DUPLICATE KEY UPDATE " +
                             "open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume), turnover = VALUES(turnover)";
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                         pstmt.setString(1, symbol);
                         pstmt.setObject(2, date);
-                        pstmt.executeUpdate();
+                        int rowsAffected = pstmt.executeUpdate();
+                        if (rowsAffected > 0) {
+                            updateCounts.put(tableName, updateCounts.getOrDefault(tableName, 0) + 1);  // Increment count for tableName
+                        }
+                        System.out.println("Table updated: " + tableName + " Updated count: " + updateCounts.get(tableName));
                     }
                 }
             }
+            System.out.println("Total updates for each table:");
+            for (Map.Entry<String, Integer> entry : updateCounts.entrySet()) {
+                System.out.println("Table " + entry.getKey() + " updated " + entry.getValue() + " times");
+            }
         }
     }
+
+
 
     private static Map<String, Object> getLastData(String symbol) throws SQLException {
         Map<String, Object> data = new HashMap<>();

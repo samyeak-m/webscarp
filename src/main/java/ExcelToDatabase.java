@@ -14,9 +14,9 @@ import java.util.Locale;
 
 public class ExcelToDatabase {
     private static final String JDBC_URL = "jdbc:mysql://localhost:3306/nepse_data";
-    private static final String USERNAME = "root"; // Replace with your MySQL username
-    private static final String PASSWORD = ""; // Replace with your MySQL password
-    private static final String FOLDER_PATH = "D:/downloads/nepsedata/"; // Replace with your actual folder path
+    private static final String USERNAME = "root";
+    private static final String PASSWORD = "";
+    private static final String FOLDER_PATH = "D:/downloads/test/";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss z yyyy", Locale.ENGLISH);
 
     public static void main(String[] args) {
@@ -35,12 +35,11 @@ public class ExcelToDatabase {
         }
     }
 
-    // Method to process each Excel file
     private static void processExcelFile(Path path, List<StockData> stockDataList) {
         try (Workbook workbook = new XSSFWorkbook(new FileInputStream(path.toFile()))) {
             Sheet sheet = workbook.getSheetAt(0);
             Iterator<Row> rowIterator = sheet.iterator();
-            rowIterator.next(); // Skip header row
+            rowIterator.next();
 
             while (rowIterator.hasNext()) {
                 Row row = rowIterator.next();
@@ -56,7 +55,6 @@ public class ExcelToDatabase {
         }
     }
 
-    // StockData class (inner class)
     static class StockData {
         LocalDate date;
         String symbol;
@@ -64,7 +62,7 @@ public class ExcelToDatabase {
         double high;
         double low;
         double close;
-        double turnover;  // Changed to double
+        double turnover;
         double vol;
 
         public StockData(LocalDate date, String symbol, double open, double high, double low, double close, double turnover, double vol) {
@@ -79,17 +77,16 @@ public class ExcelToDatabase {
         }
     }
 
-    // Method to create the table if it doesn't exist
     private static void createTableIfNotExists(Connection connection) throws SQLException {
         String createTableSQL = "CREATE TABLE IF NOT EXISTS stock_data (" +
                 "id INT AUTO_INCREMENT PRIMARY KEY," +
                 "date DATE," +
-                "symbol VARCHAR(10)," +
+                "symbol VARCHAR(50)," +
                 "open DECIMAL(10, 2)," +
                 "high DECIMAL(10, 2)," +
                 "low DECIMAL(10, 2)," +
                 "close DECIMAL(10, 2)," +
-                "turnover DECIMAL(20, 2)," + // Changed to DECIMAL for turnover
+                "turnover DECIMAL(20, 2)," +
                 "vol DECIMAL(20, 2)" +
                 ")";
         try (Statement statement = connection.createStatement()) {
@@ -97,7 +94,6 @@ public class ExcelToDatabase {
         }
     }
 
-    // Method to parse stock data from a row
     private static StockData parseStockData(Row row) throws DateTimeParseException, NumberFormatException {
         String dateStr = getCellValue(row.getCell(1));
         LocalDate date = LocalDate.parse(dateStr, DATE_FORMATTER);
@@ -106,12 +102,11 @@ public class ExcelToDatabase {
         double high = Double.parseDouble(getCellValue(row.getCell(6)));
         double low = Double.parseDouble(getCellValue(row.getCell(7)));
         double close = Double.parseDouble(getCellValue(row.getCell(8)));
-        double turnover = Double.parseDouble(getCellValue(row.getCell(9))); // Parse turnover as double
+        double turnover = Double.parseDouble(getCellValue(row.getCell(9)));
         double vol = Double.parseDouble(getCellValue(row.getCell(10)));
         return new StockData(date, symbol, open, high, low, close, turnover, vol);
     }
 
-    // Method to get cell value as string
     private static String getCellValue(Cell cell) {
         if (cell == null) {
             return "";
@@ -134,7 +129,7 @@ public class ExcelToDatabase {
         }
     }
 
-    // Method to insert stock data into the database in batches
+
     private static void insertStockData(Connection connection, List<StockData> stockDataList) throws SQLException {
         String sql = "INSERT INTO stock_data (date, symbol, open, high, low, close, turnover, vol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
@@ -146,7 +141,7 @@ public class ExcelToDatabase {
                 statement.setDouble(4, stockData.high);
                 statement.setDouble(5, stockData.low);
                 statement.setDouble(6, stockData.close);
-                statement.setDouble(7, stockData.turnover); // Set turnover as double
+                statement.setDouble(7, stockData.turnover);
                 statement.setDouble(8, stockData.vol);
                 statement.addBatch();
             }

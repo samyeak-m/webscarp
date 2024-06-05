@@ -6,21 +6,17 @@ import java.util.Scanner;
 
 public class DynamicClassRunner {
     public static void main(String[] args) {
-        // Specify the directory where your classes are located
         String directory = "D:/samyeak/BCA/6thsem/project/webscrap/src/main/java";
 
-        // Scan the directory for .class files
         File folder = new File(directory);
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".java"));
 
-        // Collect class names without extension
         List<String> classNames = new ArrayList<>();
         for (File file : files) {
             String fileName = file.getName();
             classNames.add(fileName.substring(0, fileName.lastIndexOf('.')));
         }
 
-        // Ask for user input
         Scanner scanner = new Scanner(System.in);
         List<String> selectedClasses = new ArrayList<>();
 
@@ -42,7 +38,6 @@ public class DynamicClassRunner {
 
         System.out.println("Selected classes: " + selectedClasses);
 
-        // Run selected classes
         for (String className : selectedClasses) {
             runClass(className);
         }
@@ -52,11 +47,8 @@ public class DynamicClassRunner {
 
     private static void runClass(String className) {
         try {
-            // Dynamically load the class
             Class<?> clazz = Class.forName(className);
-            // Get the main method of the class
             Method main = clazz.getMethod("main", String[].class);
-            // Invoke the main method with null as argument (no command line args)
             main.invoke(null, (Object) new String[]{});
         } catch (Exception e) {
             e.printStackTrace();

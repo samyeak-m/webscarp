@@ -17,6 +17,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
 public class dailyDemo {
 
@@ -24,7 +26,7 @@ public class dailyDemo {
     private static final String DB_USER = "root";
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
-    private static final LocalTime START_OF_DAY = LocalTime.of(10, 45);
+    private static final LocalTime START_OF_DAY = LocalTime.of(11, 00);
     private static final LocalTime END_OF_DAY = LocalTime.of(15, 05);
 
     private static String lastHash = "";
@@ -279,7 +281,10 @@ public class dailyDemo {
     }
 
     private static void storeLastUpdateOfTheDay() throws SQLException {
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+        Map<String, Integer> updateCounts = new HashMap<>();  // Initialize map to store update counts for each table
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS))
+        {
+            int count=0;
             String selectSql = "SELECT DISTINCT symbol, date FROM stock_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
@@ -301,6 +306,8 @@ public class dailyDemo {
                                 ")";
                         try (Statement createStmt = conn.createStatement()) {
                             createStmt.executeUpdate(createTableSql);
+                            System.out.println("Table created : "+tableName);
+
                         }
                     }
 
@@ -311,10 +318,39 @@ public class dailyDemo {
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
                         pstmt.setString(1, symbol);
                         pstmt.setObject(2, date);
-                        pstmt.executeUpdate();
+                        int rowsAffected = pstmt.executeUpdate();
+                        if (rowsAffected > 0) {
+                            updateCounts.put(tableName, updateCounts.getOrDefault(tableName, 0) + 1);  // Increment count for tableName
+                        }
+                        System.out.println("Table updated: " + tableName + " Updated count: " + updateCounts.get(tableName));
+                    }
+                }
+            }
+            System.out.println("Total updates for each table:");
+            for (Map.Entry<String, Integer> entry : updateCounts.entrySet()) {
+                System.out.println("Table " + entry.getKey() + " updated " + entry.getValue() + " times");
+            }
+        }
+    }
+
+    private static Map<String, Object> getLastData(String symbol) throws SQLException {
+        Map<String, Object> data = new HashMap<>();
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+            String tableName = "daily_data_" + symbol.replace("-", "_");
+            String sql = "SELECT * FROM " + tableName + " WHERE date = (SELECT MAX(date) FROM " + tableName + ")";
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    ResultSetMetaData rsmd = rs.getMetaData();
+                    int columnCount = rsmd.getColumnCount();
+                    for (int i = 1; i <= columnCount; i++) {
+                        String name = rsmd.getColumnName(i);
+                        Object value = rs.getObject(i);
+                        data.put(name, value);
                     }
                 }
             }
         }
+        return data;
     }
 }
