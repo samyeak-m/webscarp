@@ -1,4 +1,5 @@
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.*;
@@ -16,38 +17,53 @@ public class ExcelToDatabase {
     private static final String JDBC_URL = "jdbc:mysql://localhost:3306/nepse_data";
     private static final String USERNAME = "root";
     private static final String PASSWORD = "";
-    private static final String FOLDER_PATH = "D:/downloads/test/";
+    private static final String FOLDER_PATH = "D:/downloads/excel/";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("EEE MMM dd HH:mm:ss z yyyy", Locale.ENGLISH);
 
     public static void main(String[] args) {
         try (Connection connection = DriverManager.getConnection(JDBC_URL, USERNAME, PASSWORD)) {
             createTableIfNotExists(connection);
 
-            List<StockData> stockDataList = new ArrayList<>();
             Files.list(Path.of(FOLDER_PATH))
                     .filter(path -> path.getFileName().toString().toLowerCase().endsWith(".xlsx"))
-                    .forEach(path -> processExcelFile(path, stockDataList));
+                    .forEach(path -> {
+                        try {
+                            processExcelFile(path, connection);
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                        }
+                    });
 
-            insertStockData(connection, stockDataList);
             System.out.println("Data insertion complete.");
         } catch (IOException | SQLException e) {
             e.printStackTrace();
         }
     }
 
-    private static void processExcelFile(Path path, List<StockData> stockDataList) {
-        try (Workbook workbook = new XSSFWorkbook(new FileInputStream(path.toFile()))) {
-            Sheet sheet = workbook.getSheetAt(0);
+    private static void processExcelFile(Path path, Connection connection) throws SQLException {
+        try (InputStream inputStream = new FileInputStream(path.toFile());
+             Workbook workbook = new XSSFWorkbook(inputStream)) {
+            SXSSFWorkbook sxssfWorkbook = new SXSSFWorkbook((XSSFWorkbook) workbook, 100); // Keep 100 rows in memory, exceeding rows will be flushed to disk
+            Sheet sheet = sxssfWorkbook.getSheetAt(0);
             Iterator<Row> rowIterator = sheet.iterator();
-            rowIterator.next();
+            rowIterator.next(); // Skip the header row
 
+            List<StockData> stockDataList = new ArrayList<>();
             while (rowIterator.hasNext()) {
                 Row row = rowIterator.next();
                 try {
                     stockDataList.add(parseStockData(row));
+                    if (stockDataList.size() == 1000) { // Insert in batches of 1000 rows
+                        insertStockData(connection, stockDataList);
+                        stockDataList.clear();
+                        System.gc(); // Force garbage collection
+                    }
                 } catch (DateTimeParseException | NumberFormatException e) {
                     System.err.println("Error parsing row: " + row.getRowNum() + " - " + e.getMessage());
                 }
+            }
+            if (!stockDataList.isEmpty()) {
+                insertStockData(connection, stockDataList);
             }
         } catch (IOException e) {
             System.err.println("Error reading Excel file: " + path.getFileName());
@@ -95,15 +111,15 @@ public class ExcelToDatabase {
     }
 
     private static StockData parseStockData(Row row) throws DateTimeParseException, NumberFormatException {
-        String dateStr = getCellValue(row.getCell(1));
+        String dateStr = getCellValue(row.getCell(19));
         LocalDate date = LocalDate.parse(dateStr, DATE_FORMATTER);
-        String symbol = getCellValue(row.getCell(3));
-        double open = Double.parseDouble(getCellValue(row.getCell(5)));
-        double high = Double.parseDouble(getCellValue(row.getCell(6)));
-        double low = Double.parseDouble(getCellValue(row.getCell(7)));
-        double close = Double.parseDouble(getCellValue(row.getCell(8)));
-        double turnover = Double.parseDouble(getCellValue(row.getCell(9)));
-        double vol = Double.parseDouble(getCellValue(row.getCell(10)));
+        String symbol = getCellValue(row.getCell(1));
+        double open = Double.parseDouble(getCellValue(row.getCell(3)));
+        double high = Double.parseDouble(getCellValue(row.getCell(4)));
+        double low = Double.parseDouble(getCellValue(row.getCell(5)));
+        double close = Double.parseDouble(getCellValue(row.getCell(6)));
+        double turnover = Double.parseDouble(getCellValue(row.getCell(10)));
+        double vol = Double.parseDouble(getCellValue(row.getCell(8)));
         return new StockData(date, symbol, open, high, low, close, turnover, vol);
     }
 
@@ -128,7 +144,6 @@ public class ExcelToDatabase {
                 return "";
         }
     }
-
 
     private static void insertStockData(Connection connection, List<StockData> stockDataList) throws SQLException {
         String sql = "INSERT INTO stock_data (date, symbol, open, high, low, close, turnover, vol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";

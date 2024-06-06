@@ -27,7 +27,7 @@ public class dailyDemo {
     private static final String DB_PASS = "";
     private static final long INTERVAL = 60000;
     private static final LocalTime START_OF_DAY = LocalTime.of(11, 00);
-    private static final LocalTime END_OF_DAY = LocalTime.of(20, 25);
+    private static final LocalTime END_OF_DAY = LocalTime.of(15, 01);
 
     private static String lastHash = "";
 

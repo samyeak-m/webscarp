@@ -17,8 +17,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
 
 public class liveData {
 
@@ -46,6 +44,7 @@ public class liveData {
             try {
                 LocalTime now = LocalTime.now();
                 LocalDate today = LocalDate.now();
+
                 if (!today.equals(lastCheckedDate)) {
                     clearTransactionTable();
                     lastCheckedDate = today;
@@ -87,7 +86,7 @@ public class liveData {
     private static long getSleepDuration() {
         LocalTime now = LocalTime.now();
         LocalTime nextStart = now.isBefore(START_OF_DAY) ? START_OF_DAY : START_OF_DAY.plusHours(24);
-        return now.isAfter(nextStart) ? java.time.Duration.between(nextStart, now).toMillis() : java.time.Duration.between(now, nextStart).toMillis();
+        return java.time.Duration.between(now, nextStart).toMillis();
     }
 
     private static String fetchData(String urlStr) throws IOException {
@@ -105,7 +104,6 @@ public class liveData {
         }
         return result.toString();
     }
-
 
     private static String generateHash(String content) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -157,11 +155,42 @@ public class liveData {
     }
 
     private static void clearTransactionTable() {
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-             Statement stmt = conn.createStatement()) {
-            String deleteSql = "DELETE FROM transaction_data";
-            stmt.executeUpdate(deleteSql);
-            System.out.println("Transaction table cleared for new day.");
+        System.out.println("Starting to clear transaction table.");
+        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+            LocalDate today = LocalDate.now();
+            System.out.println("Today's date: " + today);
+
+            // Log current rows in the table before deletion
+            String selectSql = "SELECT * FROM transaction_data";
+            try (Statement selectStmt = conn.createStatement();
+                 ResultSet rs = selectStmt.executeQuery(selectSql)) {
+                while (rs.next()) {
+                    System.out.println("Row before delete: " +
+                            "ID: " + rs.getInt("id") +
+                            ", Timestamp: " + rs.getTimestamp("timestamp") +
+                            ", Symbol: " + rs.getString("symbol"));
+                }
+            }
+
+            System.out.println("Clearing transaction data before: " + today);
+
+            String deleteSql = "DELETE FROM transaction_data WHERE DATE(timestamp) < ?";
+            try (PreparedStatement pstmt = conn.prepareStatement(deleteSql)) {
+                pstmt.setDate(1, Date.valueOf(today));
+                int rowsDeleted = pstmt.executeUpdate();
+                System.out.println("Transaction table cleared for new day. Rows deleted: " + rowsDeleted);
+            }
+
+            // Log current rows in the table after deletion
+            try (Statement selectStmt = conn.createStatement();
+                 ResultSet rs = selectStmt.executeQuery(selectSql)) {
+                while (rs.next()) {
+                    System.out.println("Row after delete: " +
+                            "ID: " + rs.getInt("id") +
+                            ", Timestamp: " + rs.getTimestamp("timestamp") +
+                            ", Symbol: " + rs.getString("symbol"));
+                }
+            }
         } catch (SQLException e) {
             System.err.println("Error clearing transaction table: " + e.getMessage());
         }
@@ -200,66 +229,63 @@ public class liveData {
                     double prevClose = parseDouble(cells.get(9).text());
 
                     // Insert or update in live_data table
-                    String checkSql = "SELECT COUNT(*) FROM live_data WHERE symbol = ?";
+                    String checkSql = "SELECT COUNT(*) FROM live_data WHERE date = ? AND symbol = ?";
                     try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
-                        checkStmt.setString(1, symbol);
+                        checkStmt.setObject(1, date);
+                        checkStmt.setString(2, symbol);
                         try (ResultSet rs = checkStmt.executeQuery()) {
                             if (rs.next() && rs.getInt(1) > 0) {
-                                String updateSql = "UPDATE live_data SET date = ?, ltp = ?, pointChange = ?, perChange = ?, open = ?, high = ?, low = ?, vol = ?, prev_close = ? WHERE symbol = ?";
-                                try (PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
-                                    pstmt.setObject(1, date);
-                                    pstmt.setDouble(2, ltp);
-                                    pstmt.setString(3, pointChange);
-                                    pstmt.setString(4, perChange);
-                                    pstmt.setDouble(5, open);
-                                    pstmt.setDouble(6, high);
-                                    pstmt.setDouble(7, low);
-                                    pstmt.setDouble(8, vol);
-                                    pstmt.setDouble(9, prevClose);
-                                    pstmt.setString(10, symbol);
-                                    pstmt.executeUpdate();
+                                String updateSql = "UPDATE live_data SET ltp = ?, pointChange = ?, perChange = ?, open = ?, high = ?, low = ?, vol = ?, prev_close = ? WHERE date = ? AND symbol = ?";
+                                try (PreparedStatement updateStmt = conn.prepareStatement(updateSql)) {
+                                    updateStmt.setDouble(1, ltp);
+                                    updateStmt.setString(2, pointChange);
+                                    updateStmt.setString(3, perChange);
+                                    updateStmt.setDouble(4, open);
+                                    updateStmt.setDouble(5, high);
+                                    updateStmt.setDouble(6, low);
+                                    updateStmt.setDouble(7, vol);
+                                    updateStmt.setDouble(8, prevClose);
+                                    updateStmt.setObject(9, date);
+                                    updateStmt.setString(10, symbol);
+                                    updateStmt.executeUpdate();
                                 }
                             } else {
-                                String insertSql = "INSERT INTO live_data (date, symbol, ltp, pointChange, perChange, open, high, low, vol, prev_close) " +
-                                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                                try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-                                    pstmt.setObject(1, date);
-                                    pstmt.setString(2, symbol);
-                                    pstmt.setDouble(3, ltp);
-                                    pstmt.setString(4, pointChange);
-                                    pstmt.setString(5, perChange);
-                                    pstmt.setDouble(6, open);
-                                    pstmt.setDouble(7, high);
-                                    pstmt.setDouble(8, low);
-                                    pstmt.setDouble(9, vol);
-                                    pstmt.setDouble(10, prevClose);
-                                    pstmt.executeUpdate();
+                                String insertSql = "INSERT INTO live_data (date, symbol, ltp, pointChange, perChange, open, high, low, vol, prev_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                                try (PreparedStatement insertStmt = conn.prepareStatement(insertSql)) {
+                                    insertStmt.setObject(1, date);
+                                    insertStmt.setString(2, symbol);
+                                    insertStmt.setDouble(3, ltp);
+                                    insertStmt.setString(4, pointChange);
+                                    insertStmt.setString(5, perChange);
+                                    insertStmt.setDouble(6, open);
+                                    insertStmt.setDouble(7, high);
+                                    insertStmt.setDouble(8, low);
+                                    insertStmt.setDouble(9, vol);
+                                    insertStmt.setDouble(10, prevClose);
+                                    insertStmt.executeUpdate();
                                 }
                             }
                         }
                     }
 
                     // Insert into transaction_data table
-                    String transactionSql = "INSERT INTO transaction_data (timestamp, symbol, ltp, pointChange, perChange, open, high, low, vol, prev_close) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                    try (PreparedStatement pstmt = conn.prepareStatement(transactionSql)) {
-                        pstmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
-                        pstmt.setString(2, symbol);
-                        pstmt.setDouble(3, ltp);
-                        pstmt.setString(4, pointChange);
-                        pstmt.setString(5, perChange);
-                        pstmt.setDouble(6, open);
-                        pstmt.setDouble(7, high);
-                        pstmt.setDouble(8, low);
-                        pstmt.setDouble(9, vol);
-                        pstmt.setDouble(10, prevClose);
-                        pstmt.executeUpdate();
+                    String transactionSql = "INSERT INTO transaction_data (timestamp, symbol, ltp, pointChange, perChange, open, high, low, vol, prev_close) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    try (PreparedStatement transactionStmt = conn.prepareStatement(transactionSql)) {
+                        transactionStmt.setTimestamp(1, Timestamp.valueOf(LocalDateTime.now()));
+                        transactionStmt.setString(2, symbol);
+                        transactionStmt.setDouble(3, ltp);
+                        transactionStmt.setString(4, pointChange);
+                        transactionStmt.setString(5, perChange);
+                        transactionStmt.setDouble(6, open);
+                        transactionStmt.setDouble(7, high);
+                        transactionStmt.setDouble(8, low);
+                        transactionStmt.setDouble(9, vol);
+                        transactionStmt.setDouble(10, prevClose);
+                        transactionStmt.executeUpdate();
                     }
 
-                } catch (NumberFormatException e) {
-                    System.err.println("Skipping row due to number format error: " + e.getMessage() + " - Row data: " + row.text());
-                } catch (SQLException e) {
-                    System.err.println("SQL error while inserting row: " + e.getMessage() + " - Row data: " + row.text());
+                } catch (Exception e) {
+                    System.err.println("Error processing row: " + row.text() + " Error: " + e.getMessage());
                 }
             }
         }
@@ -267,18 +293,10 @@ public class liveData {
 
     private static double parseDouble(String text) {
         try {
-            return Double.parseDouble(text.replace(",", "").replace("-", "0"));
+            return Double.parseDouble(text.replaceAll("[^\\d.]", ""));
         } catch (NumberFormatException e) {
+            System.err.println("Error parsing double from text: " + text + ". Returning 0.0");
             return 0.0;
         }
     }
-
-    private static int parseInt(String text) {
-        try {
-            return Integer.parseInt(text.replace(",", "").replace("-", "0"));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
 }

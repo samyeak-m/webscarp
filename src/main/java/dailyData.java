@@ -283,7 +283,7 @@ public class dailyData {
     private static void storeLastUpdateOfTheDay() throws SQLException {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
             Map<String, Integer> updateCounts = new HashMap<>();  // Initialize map to store update counts for each table
-            String selectSql = "SELECT DISTINCT symbol, date FROM stock_data";
+            String selectSql = "SELECT DISTINCT symbol, date FROM daily_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
@@ -309,7 +309,7 @@ public class dailyData {
                     }
 
                     String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume, turnover) " +
-                            "SELECT date, open, high, low, close, vol, turnover FROM stock_data WHERE symbol = ? AND date = ? " +
+                            "SELECT date, open, high, low, close, vol, turnover FROM daily_data WHERE symbol = ? AND date = ? " +
                             "ON DUPLICATE KEY UPDATE " +
                             "open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume), turnover = VALUES(turnover)";
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
