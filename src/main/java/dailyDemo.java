@@ -285,7 +285,7 @@ public class dailyDemo {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS))
         {
             int count=0;
-            String selectSql = "SELECT DISTINCT symbol, date FROM daily_data";
+            String selectSql = "SELECT DISTINCT symbol, date FROM histock_data";
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(selectSql)) {
                 while (rs.next()) {
@@ -312,7 +312,7 @@ public class dailyDemo {
                     }
 
                     String insertSql = "INSERT INTO " + tableName + " (date, open, high, low, close, volume, turnover) " +
-                            "SELECT date, open, high, low, close, vol, turnover FROM daily_data WHERE symbol = ? AND date = ? " +
+                            "SELECT date, open, high, low, close, vol, turnover FROM histock_data WHERE symbol = ? AND date = ? " +
                             "ON DUPLICATE KEY UPDATE " +
                             "open = VALUES(open), high = VALUES(high), low = VALUES(low), close = VALUES(close), volume = VALUES(volume), turnover = VALUES(turnover)";
                     try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
